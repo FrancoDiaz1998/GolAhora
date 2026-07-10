@@ -1,73 +1,28 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { apiRequest } from '../services/apiClient';
 
 const DescuentosContext = createContext();
 
-const MOCK_DESCUENTOS = [
-    {
-        id: 1,
-        codigo: 'GOL10',
-        nombre: 'Promo bienvenida',
-        porcentaje: 10,
-        descripcion: 'Descuento inicial para reservas y cobros.',
-        activo: true,
-    },
-    {
-        id: 2,
-        codigo: 'SOCIO20',
-        nombre: 'Beneficio socio',
-        porcentaje: 20,
-        descripcion: 'Beneficio promocional para clientes frecuentes.',
-        activo: true,
-    },
-    {
-        id: 3,
-        codigo: 'VENCIDO15',
-        nombre: 'Promo inactiva',
-        porcentaje: 15,
-        descripcion: 'Ejemplo de descuento deshabilitado.',
-        activo: false,
-    },
-];
-
-function normalizarDescuento(descuento) {
-    return {
-        ...descuento,
-        codigo: String(descuento.codigo || '').trim().toUpperCase(),
-        porcentaje: Number(descuento.porcentaje || 0),
-        activo: descuento.activo !== false,
-    };
-}
-
-function mergeDescuentosLocales(localItems) {
-    if (!Array.isArray(localItems) || localItems.length === 0) return MOCK_DESCUENTOS;
-    const codigosLocales = new Set(localItems.map(item => String(item.codigo || '').toUpperCase()));
-    const faltantes = MOCK_DESCUENTOS.filter(item => !codigosLocales.has(item.codigo));
-    return [...localItems.map(normalizarDescuento), ...faltantes];
-}
+const normalizarDescuento = (descuento) => ({
+    ...descuento,
+    codigo: String(descuento.codigo || '').trim().toUpperCase(),
+    porcentaje: Number(descuento.porcentaje || 0),
+    activo: descuento.activo !== false,
+});
 
 export function DescuentosProvider({ children }) {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    const persistir = (next) => {
-        localStorage.setItem('descuentos_db', JSON.stringify(next));
-        return next;
-    };
-
     const fetchItems = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const localData = localStorage.getItem('descuentos_db');
-            if (localData) {
-                const next = mergeDescuentosLocales(JSON.parse(localData));
-                setItems(persistir(next));
-            } else {
-                setItems(persistir(MOCK_DESCUENTOS));
-            }
+            const data = await apiRequest('/descuentos');
+            setItems(data.map(normalizarDescuento));
         } catch (err) {
-            setError('Error cargando descuentos');
+            setError(err.message);
         } finally {
             setLoading(false);
         }
@@ -76,19 +31,21 @@ export function DescuentosProvider({ children }) {
     useEffect(() => { fetchItems(); }, [fetchItems]);
 
     const crearItem = async (nuevo) => {
-        const item = normalizarDescuento({ ...nuevo, id: Date.now() });
-        setItems(prev => persistir([item, ...prev]));
-        return item;
+        const creado = await apiRequest('/descuentos', { method: 'POST', body: JSON.stringify(normalizarDescuento(nuevo)) });
+        await fetchItems();
+        return creado;
     };
 
     const modificarItem = async (modificado) => {
         const item = normalizarDescuento(modificado);
-        setItems(prev => persistir(prev.map(x => x.id === item.id ? { ...x, ...item } : x)));
-        return item;
+        const actualizado = await apiRequest(`/descuentos/${item.id}`, { method: 'PUT', body: JSON.stringify(item) });
+        await fetchItems();
+        return actualizado;
     };
 
     const eliminarItem = async (id) => {
-        setItems(prev => persistir(prev.filter(x => x.id !== id)));
+        await apiRequest(`/descuentos/${id}`, { method: 'DELETE' });
+        await fetchItems();
     };
 
     const buscarPorCodigo = (codigo) => {

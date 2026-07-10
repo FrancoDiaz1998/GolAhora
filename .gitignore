@@ -22,3 +22,28 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Build output
+bin/
+obj/
+[Bb]in/
+[Oo]bj/
+
+# IDE files
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Publish output
+publish/
+
+# Test output
+TestResults/

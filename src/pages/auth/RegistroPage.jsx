@@ -58,7 +58,7 @@ function RegistroPage() {
                     //fechaRegistro: new Date().toISOString().split('T')[0]
                 };
 
-                // 1. Envía los datos al servidor / mock
+                // 1. Envia los datos al servidor
                 const clienteCreado = await crearCliente(nuevoCliente);
                 console.log('Cliente creado con éxito:', clienteCreado);
 

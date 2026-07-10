@@ -11,6 +11,7 @@ export default function SoporteForm({
 
     const [message, setMessage] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
+    const [errorMessage, setErrorMessage] = useState('');
 
     useEffect(() => {
         if (typeof window !== 'undefined' && window.lucide) {
@@ -18,13 +19,17 @@ export default function SoporteForm({
         }
     }, []);
 
-    function handleSubmit(e) {
+    async function handleSubmit(e) {
 
         e.preventDefault();
+        setErrorMessage('');
 
-        const result = onSendMessage(message);
+        const result = await onSendMessage(message);
 
-        if (!result.ok) return;
+        if (!result.ok) {
+            setErrorMessage(result.error);
+            return;
+        }
 
         setSuccessMessage(result.message);
         setMessage('');
@@ -103,6 +108,13 @@ export default function SoporteForm({
                     <div className="form-alert success">
                         <Icon name="check-circle" />
                         <span>{successMessage}</span>
+                    </div>
+                )}
+
+                {errorMessage && (
+                    <div className="form-alert error">
+                        <Icon name="circle-alert" />
+                        <span>{errorMessage}</span>
                     </div>
                 )}
 

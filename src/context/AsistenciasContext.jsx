@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { apiRequest } from '../services/apiClient';
 
 const AsistenciasContext = createContext();
 
@@ -7,22 +8,25 @@ export function AsistenciasProvider({ children }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    useEffect(() => {
-        const localData = localStorage.getItem('asistencias_db');
-        if (localData) setAsistenciasPorClase(JSON.parse(localData));
+    const fetchAsistencias = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            setAsistenciasPorClase(await apiRequest('/asistencias'));
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
-    const fetchAsistencias = useCallback(async () => {
-        // Estructura ya levantada sincrónicamente por el efecto de carga inicial
-    }, []);
+    useEffect(() => { fetchAsistencias(); }, [fetchAsistencias]);
 
     const registrarAsistencia = useCallback(async (idClase, arrayAsistencias) => {
-        setAsistenciasPorClase(prev => {
-            const next = { ...prev, [idClase]: arrayAsistencias };
-            localStorage.setItem('asistencias_db', JSON.stringify(next));
-            return next;
-        });
-    }, []);
+        const result = await apiRequest(`/asistencias/${idClase}`, { method: 'PUT', body: JSON.stringify(arrayAsistencias) });
+        await fetchAsistencias();
+        return result;
+    }, [fetchAsistencias]);
 
     return (
         <AsistenciasContext.Provider value={{ clases: [], asistenciasPorClase, loading, error, fetchAsistencias, registrarAsistencia, modificarAsistencia: registrarAsistencia }}>

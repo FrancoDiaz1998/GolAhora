@@ -33,14 +33,14 @@ export default function SeguridadForm({
         }));
     }
 
-    function handleSubmit(e) {
+    async function handleSubmit(e) {
 
         e.preventDefault();
 
         setSuccessMessage('');
         setErrorMessage('');
 
-        const result = onChangePassword(passwordData);
+        const result = await onChangePassword(passwordData);
 
         if (!result.ok) {
             setErrorMessage(result.error);

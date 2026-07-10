@@ -1,135 +1,16 @@
-// src/context/AuthContext.jsx
 import { createContext, useContext, useState } from 'react';
+import { apiRequest } from '../services/apiClient';
 
 const AuthContext = createContext();
-const API_URL = 'http://localhost:5063/api';
-const USE_MOCK = true;
-const MOCK_USERS = [
-    {
-        id: 1,
-        nombre: 'Franco',
-        apellido: 'Díaz',
-        email: 'admin@golahora.com',
-        password: '123456',
-        telefono: '11 2345-6789',
-        username: 'franco.admin',
-        rol: 'admin',
-        estado: 'activo',
-        avatar: null,
-        legajo: 'ADM-001',
-        cargo: 'Administrador General',
-    },
-
-    {
-        id: 2,
-        nombre: 'Carla',
-        apellido: 'Gómez',
-        email: 'empleado@golahora.com',
-        password: '123456',
-        telefono: '11 8765-4321',
-        username: 'carla.emp',
-        rol: 'empleado',
-        estado: 'activo',
-        avatar: null,
-        legajo: 'EMP-014',
-        cargo: 'Recepción',
-    },
-
-    {
-        id: 3,
-        nombre: 'Rodrigo',
-        apellido: 'Pérez',
-        email: 'profe@golahora.com',
-        password: '123456',
-        telefono: '11 2222-1111',
-        username: 'rodrigo.profe',
-        rol: 'profesor',
-        estado: 'activo',
-        avatar: null,
-        legajo: 'PROF-021',
-        cargo: 'Entrenador',
-    },
-
-    {
-        id: 4,
-        nombre: 'Lucía',
-        apellido: 'Martínez',
-        email: 'cliente@golahora.com',
-        password: '123456',
-        telefono: '11 9999-8888',
-        username: 'lucia.cliente',
-        rol: 'cliente',
-        estado: 'activo',
-        avatar: null,
-        nroSocio: 'SOC-1044',
-    },
-];
-
-function readLocalArray(key) {
-    try {
-        const value = JSON.parse(localStorage.getItem(key) || '[]');
-        return Array.isArray(value) ? value : [];
-    } catch {
-        return [];
-    }
-}
-
-function writeLocalArray(key, value) {
-    localStorage.setItem(key, JSON.stringify(value));
-}
-
-function userIdentifier(usuario) {
-    return {
-        id: usuario?.id,
-        idUsuario: usuario?.idUsuario,
-        email: usuario?.email?.toLowerCase(),
-        username: (usuario?.username || usuario?.userName)?.toLowerCase(),
-    };
-}
-
-function sameUser(a, b) {
-    const left = userIdentifier(a);
-    const right = userIdentifier(b);
-    return Boolean(
-        (left.id && (left.id === right.id || left.id === right.idUsuario)) ||
-        (left.idUsuario && (left.idUsuario === right.id || left.idUsuario === right.idUsuario)) ||
-        (left.email && left.email === right.email) ||
-        (left.username && left.username === right.username)
-    );
-}
-
-function syncInactiveUserInStorage(usuario) {
-    const updatedUser = {
-        ...usuario,
-        activo: false,
-        estado: 'inactivo',
-    };
-
-    ['clientes_db', 'empleados_db', 'profesores_db', 'gol_mock_registered_users'].forEach(key => {
-        const items = readLocalArray(key);
-        if (items.length === 0) return;
-        const next = items.map(item => sameUser(item, usuario) ? { ...item, activo: false, estado: 'inactivo' } : item);
-        writeLocalArray(key, next);
-    });
-
-    const disabledUsers = readLocalArray('gol_disabled_users');
-    if (!disabledUsers.some(item => sameUser(item, usuario))) {
-        writeLocalArray('gol_disabled_users', [...disabledUsers, userIdentifier(updatedUser)]);
-    }
-
-    return updatedUser;
-}
 
 export function AuthProvider({ children }) {
-
-    // Cargo el usuario del localStorage para mantener la sesión activa al recargar la
-    // página.
     const [user, setUser] = useState(() => {
         try {
             const stored = localStorage.getItem('gol_user');
             return stored ? JSON.parse(stored) : null;
-        } 
-        catch {return null;}
+        } catch {
+            return null;
+        }
     });
 
     function persistUser(updatedUser) {
@@ -137,99 +18,50 @@ export function AuthProvider({ children }) {
         localStorage.setItem('gol_user', JSON.stringify(updatedUser));
     }
 
-// 1. Convertimos login en ASYNC para dejarlo listo para la API
     async function login({ email, password }) {
-        if (USE_MOCK) {
-            const registeredUsers = readLocalArray('gol_mock_registered_users');
-            const adminCreatedClients = readLocalArray('clientes_db');
-            const adminCreatedEmployees = readLocalArray('empleados_db');
-            const adminCreatedProfessors = readLocalArray('profesores_db');
-            const disabledUsers = readLocalArray('gol_disabled_users');
+        try {
+            const data = await apiRequest('/Auth/login', {
+                method: 'POST',
+                body: JSON.stringify({ userName: email, password }),
+            });
 
-            const found = [
-                ...MOCK_USERS,
-                ...registeredUsers,
-                ...adminCreatedClients,
-                ...adminCreatedEmployees,
-                ...adminCreatedProfessors,
-            ].find(u =>
-                u.email.toLowerCase() === email.trim().toLowerCase() &&
-                u.password === password &&
-                u.activo !== false &&
-                u.estado !== 'inactivo'
-            );
+            const apiUser = data.user;
+            const roles = apiUser.roles || [];
+            let role = 'Client';
+            let rol = 'cliente';
 
-            if (!found || disabledUsers.some(item => sameUser(item, found))) {
-                return { ok: false, error: 'Credenciales incorrectas.' };
+            if (roles.includes('Admin')) {
+                role = 'Admin';
+                rol = 'admin';
+            } else if (roles.includes('Employee')) {
+                role = 'Employee';
+                rol = 'empleado';
+            } else if (roles.includes('Professor')) {
+                role = 'Professor';
+                rol = 'profesor';
             }
 
-            const roleByRol = {
-                admin: 'Admin',
-                empleado: 'Employee',
-                profesor: 'Professor',
-                cliente: 'Client',
-            };
-            const normalizedRol = found.rol || 'cliente';
-            const safeUser = {
-                ...found,
-                rol: normalizedRol,
-                role: roleByRol[normalizedRol],
-            };
-            delete safeUser.password;
-            persistUser(safeUser);
+            persistUser({
+                id: apiUser.idUser,
+                idUsuario: apiUser.idUser,
+                nombre: apiUser.name,
+                apellido: apiUser.lastName,
+                dni: apiUser.dni || apiUser.DNI,
+                email: apiUser.email,
+                telefono: apiUser.phoneNumber,
+                username: apiUser.userName,
+                userName: apiUser.userName,
+                token: data.token,
+                roles,
+                role,
+                rol,
+                estado: apiUser.isActive === false ? 'inactivo' : 'activo',
+                activo: apiUser.isActive !== false,
+            });
+
             return { ok: true };
-        } else {
-            // LOGIN REAL CON BACKEND
-            try {
-                const response = await fetch(`${API_URL}/Auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
-                });
-                if (!response.ok) {
-                    const err = await response.json().catch(() => ({}));
-                    return { ok: false, error: err.message || 'Credenciales incorrectas.' };
-                }
-                
-                const data = await response.json(); // Tu backend debería retornar el usuario + token
-
-                const apiUser = data.user;
-                const roles = apiUser.roles || [];
-
-                let role = 'Client';
-                let rol = 'cliente';
-
-                if (roles.includes('Admin')) {
-                    role = 'Admin';
-                    rol = 'admin';
-                } else if (roles.includes('Employee')) {
-                    role = 'Employee';
-                    rol = 'empleado';
-                } else if (roles.includes('Professor')) {
-                    role = 'Professor';
-                    rol = 'profesor';
-                }
-
-
-                const normalizedUser = {
-                    id: apiUser.idUser,
-                    nombre: apiUser.name,
-                    apellido: apiUser.lastName,
-                    email: apiUser.email,
-                    telefono: apiUser.phoneNumber,
-                    userName: apiUser.userName,
-                    token: data.token,
-                    roles,
-                    role,
-                    rol,
-                };
-
-                persistUser(normalizedUser);
-
-                return { ok: true };
-            } catch {
-                return { ok: false, error: 'Error de conexión con el servidor.' };
-            }
+        } catch (err) {
+            return { ok: false, error: err.message || 'Credenciales incorrectas.' };
         }
     }
 
@@ -238,59 +70,66 @@ export function AuthProvider({ children }) {
         localStorage.removeItem('gol_user');
     }
 
-    function updateProfile(data) {
-
-        const updatedUser = {...user, ...data,};
-
-        persistUser(updatedUser);
-
-        return {ok: true, message: 'Perfil actualizado correctamente.'};
+    async function updateProfile(data) {
+        if (!user?.idUsuario) return { ok: false, error: 'No hay usuario activo.' };
+        try {
+            const updatedUser = await apiRequest(`/User/${user.idUsuario}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    name: data.nombre ?? data.name ?? user.nombre,
+                    lastName: data.apellido ?? data.lastName ?? user.apellido,
+                    DNI: data.dni ?? data.DNI ?? user.dni ?? '',
+                    userName: data.username ?? data.userName ?? user.userName,
+                    email: data.email ?? user.email,
+                    phoneNumber: data.telefono ?? data.phoneNumber ?? user.telefono ?? '',
+                }),
+            });
+            persistUser({ ...user, ...data, ...updatedUser });
+            return { ok: true, message: 'Perfil actualizado correctamente.' };
+        } catch (err) {
+            return { ok: false, error: err.message };
+        }
     }
 
-    function changePassword({currentPassword, newPassword, confirmPassword}) 
-    {
-
-        if (!currentPassword || !newPassword || !confirmPassword) {
-            return {ok: false, error: 'Completá todos los campos.'};
+    async function changePassword(data) {
+        if (!user?.idUsuario) return { ok: false, error: 'No hay usuario activo.' };
+        try {
+            const result = await apiRequest(`/usuarios/${user.idUsuario}/password`, {
+                method: 'PUT',
+                body: JSON.stringify(data),
+            });
+            return { ok: true, message: result.message || 'Contrasena actualizada correctamente.' };
+        } catch (err) {
+            return { ok: false, error: err.message };
         }
-
-        if (newPassword !== confirmPassword) {
-            return {ok: false, error: 'Las contraseñas no coinciden.'};
-        }
-
-        if (newPassword.length < 6) {
-            return {ok: false,  error: 'La contraseña debe tener al menos 6 caracteres.'};
-        }
-
-        const mockUser = MOCK_USERS.find(u => u.id === user.id);
-
-        if (mockUser.password !== currentPassword) {
-            return {ok: false, error: 'La contraseña actual es incorrecta.'};
-        }
-        mockUser.password = newPassword;
-
-        return {ok: true, message: 'Contraseña actualizada correctamente.'};
     }
 
-    function deactivateAccount() {
-        const updatedUser = syncInactiveUserInStorage(user);
-        persistUser(updatedUser);
-
-        return {ok: true, message: 'Cuenta dada de baja.'};
+    async function deactivateAccount() {
+        if (!user?.idUsuario) return { ok: false, error: 'No hay usuario activo.' };
+        try {
+            await apiRequest(`/User/${user.idUsuario}`, { method: 'DELETE' });
+            const updatedUser = { ...user, activo: false, estado: 'inactivo' };
+            persistUser(updatedUser);
+            return { ok: true, message: 'Cuenta dada de baja.' };
+        } catch (err) {
+            return { ok: false, error: err.message };
+        }
     }
 
-    function sendSupportMessage(message) {
-        console.log('Mensaje enviado a soporte:', {
-            usuario: user.email,
-            mensaje: message,
-            fecha: new Date(),
-        });
-        return {ok: true, message: 'Mensaje enviado correctamente.'};
+    async function sendSupportMessage(message) {
+        try {
+            const result = await apiRequest('/soporte', {
+                method: 'POST',
+                body: JSON.stringify({ mensaje: message, userId: user?.idUsuario, email: user?.email }),
+            });
+            return { ok: true, message: result.message || 'Mensaje recibido.' };
+        } catch (err) {
+            return { ok: false, error: err.message };
+        }
     }
 
     return (
-        <AuthContext.Provider
-            value={{user, login, logout, updateProfile, changePassword, deactivateAccount, sendSupportMessage,}}>
+        <AuthContext.Provider value={{ user, login, logout, updateProfile, changePassword, deactivateAccount, sendSupportMessage }}>
             {children}
         </AuthContext.Provider>
     );
@@ -298,8 +137,6 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
     const ctx = useContext(AuthContext);
-    if (!ctx) {
-        throw new Error('useAuth debe usarse dentro de <AuthProvider>');
-    }
+    if (!ctx) throw new Error('useAuth debe usarse dentro de <AuthProvider>');
     return ctx;
 }
